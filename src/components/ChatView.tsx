@@ -159,83 +159,63 @@ export default function ChatView({ events, sponsors }: ChatViewProps) {
     setIsTyping(true);
     setActiveGraph(null);
     
-    // State 1: Searching memories...
+    // Step 1: INDEX SEEK
+    console.log("STEP 1");
     setChroniState('searching');
     setChroniBubble("Searching Cognee memory graph...");
     setCogneeStep(1);
 
-    await sleep(800);
+    // Prepare API call in background while steps transition
+    const apiCallPromise = (async () => {
+      try {
+        const mappedHistory = currentHistory
+          .filter(m => m.id !== 'welcome-msg')
+          .slice(-6) // Keep last 6 exchanges for context limits
+          .map(m => ({
+            role: m.role,
+            content: m.content
+          }));
 
-    // State 2: Connecting organizational knowledge...
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: query,
+            memories: { events, sponsors },
+            history: mappedHistory
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to query memory backend.");
+        }
+
+        return await response.json();
+      } catch (err) {
+        console.error("API error during background fetch:", err);
+        throw err;
+      }
+    })();
+
+    await sleep(1000);
+
+    // Step 2: RELATION LINK
+    console.log("STEP 2");
     setChroniState('thinking');
     setChroniBubble("Connecting organizational knowledge graph relations...");
     setCogneeStep(2);
 
+    await sleep(1000);
+
+    // Step 3: SUBGRAPH BUILD
+    console.log("STEP 3");
+    setChroniState('found');
+    setChroniBubble("Ah, Cognee memory located! Restoring graph context...");
+    setCogneeStep(3); // SUBGRAPH BUILD active
+
+    let data;
     try {
-      // Map frontend messages to match the expected schema
-      const mappedHistory = currentHistory
-        .filter(m => m.id !== 'welcome-msg')
-        .slice(-6) // Keep last 6 exchanges for context limits
-        .map(m => ({
-          role: m.role,
-          content: m.content
-        }));
-
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: query,
-          memories: { events, sponsors },
-          history: mappedHistory
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to query memory backend.");
-      }
-
-      const data = await response.json();
-      
-      // State 3: Memory Found!
-      setChroniState('found');
-      setChroniBubble("Ah, Cognee memory located! Restoring graph context...");
-      setCogneeStep(3); // SUBGRAPH BUILD active
-
-      // Add requested console logs
-      const responseWithGraph = { cogneeSubGraph: data.cogneeSubGraph || { nodes: [], edges: [] } };
-      {
-        const response = responseWithGraph;
-        console.log("Graph response:", response.cogneeSubGraph);
-        console.log("Nodes:", response.cogneeSubGraph.nodes);
-        console.log("Edges:", response.cogneeSubGraph.edges);
-      }
-
-      // Small delay to make the SUBGRAPH BUILD phase visually prominent and satisfying
-      await sleep(1000);
-
-      if (data.cogneeSubGraph && data.cogneeSubGraph.nodes && data.cogneeSubGraph.nodes.length > 0) {
-        setActiveGraph(data.cogneeSubGraph);
-      } else {
-        setActiveGraph(null);
-      }
-
-      // Transition to complete step 4 (all indicators completed, graph fully visible)
-      setCogneeStep(4);
-
-      await sleep(1200);
-
-      setChroniState('idle');
-      setChroniBubble(undefined);
-
-      // Add assistant reply
-      setMessages(prev => [...prev, {
-        id: `a-${Date.now()}`,
-        role: 'assistant',
-        content: data.reply,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      }]);
-
+      data = await apiCallPromise;
     } catch (err: any) {
       console.error(err);
       setChroniState('confused');
@@ -254,9 +234,47 @@ export default function ChatView({ events, sponsors }: ChatViewProps) {
         setChroniBubble(undefined);
       }, 4000);
 
-    } finally {
       setIsTyping(false);
+      return;
     }
+
+    // Add requested console logs
+    const responseWithGraph = { cogneeSubGraph: data?.cogneeSubGraph || { nodes: [], edges: [] } };
+    {
+      const response = responseWithGraph;
+      console.log("Graph response:", response.cogneeSubGraph);
+      console.log("Nodes:", response.cogneeSubGraph.nodes);
+      console.log("Edges:", response.cogneeSubGraph.edges);
+    }
+
+    // Wait 1000ms in step 3 as requested before rendering the graph
+    await sleep(1000);
+
+    // Render graph now that step 3 is fully completed
+    if (data && data.cogneeSubGraph && data.cogneeSubGraph.nodes && data.cogneeSubGraph.nodes.length > 0) {
+      setActiveGraph(data.cogneeSubGraph);
+    } else {
+      setActiveGraph(null);
+    }
+
+    // Step 4: Completed
+    console.log("STEP 4");
+    setCogneeStep(4);
+
+    await sleep(1200);
+
+    setChroniState('idle');
+    setChroniBubble(undefined);
+
+    // Add assistant reply
+    setMessages(prev => [...prev, {
+      id: `a-${Date.now()}`,
+      role: 'assistant',
+      content: data?.reply || "No response received.",
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    }]);
+
+    setIsTyping(false);
   };
 
   // ⭐️ SPECIAL JUDGE WOW EXPERIENCE SEQUENCE ⭐️
@@ -267,42 +285,45 @@ export default function ChatView({ events, sponsors }: ChatViewProps) {
     setChroniBubble("Yawn... Chroni waking up...");
     setWowStep(0);
     setWowProgress(5);
-    setCogneeStep(1);
 
-    // Step 1: Wake up
-    await sleep(800);
+    // Step 1: INDEX SEEK
+    console.log("STEP 1");
+    setCogneeStep(1);
     setChroniState('searching');
     setChroniBubble("Scanning Cognee directory nodes...");
     setWowStep(1);
     setWowProgress(25);
-    setCogneeStep(1);
 
-    // Step 2: Retrieve sponsors
-    await sleep(800);
+    await sleep(1000);
+
+    // Step 2: RELATION LINK
+    console.log("STEP 2");
+    setCogneeStep(2);
     setChroniState('thinking');
     setChroniBubble("Traversing relationships SPONSORED_BY...");
     setWowStep(2);
     setWowProgress(50);
-    setCogneeStep(2);
 
-    // Step 3: Retrieve budgets & lessons
-    await sleep(800);
+    await sleep(1000);
+
+    // Step 3: SUBGRAPH BUILD
+    console.log("STEP 3");
+    setCogneeStep(3);
     setChroniState('searching');
     setChroniBubble("Analyzing ALLOCATED_BUDGET & LEARNED_LESSON connections...");
     setWowStep(3);
     setWowProgress(75);
-    setCogneeStep(2);
+
+    await sleep(1000);
 
     // Step 4: Finalize
-    await sleep(800);
     setChroniState('found');
     setChroniBubble("Compiling final memory context...");
     setWowStep(4);
     setWowProgress(100);
-    setCogneeStep(3);
 
-    // Celebration
-    await sleep(800);
+    // Celebration transition
+    await sleep(1000);
     setChroniState('success');
     setChroniBubble("✨ Cognee memories loaded! Launching proposal...");
 
@@ -339,11 +360,13 @@ Synthesize past lessons, recommend a budget scale based on past metrics, suggest
         console.log("Edges:", response.cogneeSubGraph.edges);
       }
 
+      // Render the graph only after Step 3 finishes (now)
       if (data.cogneeSubGraph && data.cogneeSubGraph.nodes && data.cogneeSubGraph.nodes.length > 0) {
         setActiveGraph(data.cogneeSubGraph);
       }
 
       // All indicators completed, graph visible
+      console.log("STEP 4");
       setCogneeStep(4);
 
       setMessages(prev => [...prev, {
@@ -355,7 +378,7 @@ Synthesize past lessons, recommend a budget scale based on past metrics, suggest
 
     } catch (err) {
       // Fallback response in case of API error with complete static seeded subgraph
-      setActiveGraph({
+      const staticGraph = {
         nodes: [
           { id: 'e-1', type: 'Event', name: 'TechFest 2025', properties: { budget: 50000, outcome: 'Attracted 500+ attendees' } },
           { id: 's-1', type: 'Sponsor', name: 'Google Developer Groups', properties: { amount: 25000 } },
@@ -367,9 +390,17 @@ Synthesize past lessons, recommend a budget scale based on past metrics, suggest
           { id: 'edge-2', sourceId: 'e-1', targetId: 'b-1', relationType: 'ALLOCATED_BUDGET' },
           { id: 'edge-3', sourceId: 'e-1', targetId: 'l-1', relationType: 'LEARNED_LESSON' }
         ]
-      });
+      };
+
+      // Log fallback graph as requested
+      console.log("Graph response:", staticGraph);
+      console.log("Nodes:", staticGraph.nodes);
+      console.log("Edges:", staticGraph.edges);
+
+      setActiveGraph(staticGraph);
 
       // Show completed state on fallback
+      console.log("STEP 4");
       setCogneeStep(4);
 
       setMessages(prev => [...prev, {
