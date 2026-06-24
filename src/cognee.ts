@@ -220,19 +220,78 @@ export class CogneeProvider {
     return newEdge;
   }
 
-  // 2. searchMemory method (keyword matching across names and properties)
+  // 2. searchMemory method (keyword matching across names and properties with intelligent tokenization)
   public searchMemory(query: string): CogneeNode[] {
     const term = query.toLowerCase().trim();
     if (!term) return [];
 
-    return this.graph.nodes.filter(node => {
+    // First, try exact substring match of the whole query
+    const exactMatches = this.graph.nodes.filter(node => {
       if (node.name.toLowerCase().includes(term)) return true;
       if (node.type.toLowerCase().includes(term)) return true;
-      
       return Object.values(node.properties).some(val => 
         String(val).toLowerCase().includes(term)
       );
     });
+
+    if (exactMatches.length > 0) {
+      return exactMatches;
+    }
+
+    // Tokenize query into words to support natural language questions
+    const stopWords = new Set([
+      'what', 'is', 'are', 'the', 'a', 'an', 'and', 'or', 'but', 'if', 'for', 'with', 
+      'at', 'by', 'from', 'on', 'to', 'in', 'of', 'about', 'which', 'who', 'whom', 
+      'this', 'that', 'these', 'those', 'how', 'why', 'where', 'when', 'can', 'could', 
+      'would', 'should', 'will', 'shall', 'our', 'us', 'we', 'they', 'them', 'their', 
+      'your', 'my', 'me', 'i', 'you', 'he', 'she', 'it', 'his', 'her', 'its', 'was', 
+      'were', 'been', 'have', 'has', 'had', 'do', 'does', 'did', 'some', 'any', 'no', 
+      'not', 'all', 'more', 'most', 'many', 'much', 'please', 'tell', 'show', 'list', 'did', 'we', 'save'
+    ]);
+
+    // Split query by non-alphanumeric characters, filter empty & stop words
+    const keywords = term
+      .split(/[^a-z0-9]+/i)
+      .map(w => w.trim())
+      .filter(w => w.length > 2 && !stopWords.has(w));
+
+    if (keywords.length === 0) {
+      // If all filtered out, try with any words longer than 1 char
+      const allWords = term.split(/[^a-z0-9]+/i).map(w => w.trim()).filter(w => w.length > 1);
+      keywords.push(...allWords);
+    }
+
+    if (keywords.length === 0) return [];
+
+    // Score nodes based on keyword matches
+    const scoredNodes = this.graph.nodes.map(node => {
+      let score = 0;
+      const nodeNameLower = node.name.toLowerCase();
+      const nodeTypeLower = node.type.toLowerCase();
+
+      keywords.forEach(keyword => {
+        // Name matches get high weight
+        if (nodeNameLower.includes(keyword)) score += 10;
+        // Type matches get medium weight
+        if (nodeTypeLower.includes(keyword)) score += 5;
+        
+        // Property matches
+        Object.entries(node.properties).forEach(([key, val]) => {
+          const valStr = String(val).toLowerCase();
+          if (valStr.includes(keyword)) {
+            score += 2;
+          }
+        });
+      });
+
+      return { node, score };
+    });
+
+    // Filter out nodes with no matches and sort by score descending
+    return scoredNodes
+      .filter(item => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map(item => item.node);
   }
 
   // 3. retrieveRelatedMemories method (DFS/BFS traversal of connected nodes)

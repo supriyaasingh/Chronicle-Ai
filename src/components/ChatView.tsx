@@ -200,13 +200,28 @@ export default function ChatView({ events, sponsors }: ChatViewProps) {
       // State 3: Memory Found!
       setChroniState('found');
       setChroniBubble("Ah, Cognee memory located! Restoring graph context...");
-      setCogneeStep(3);
+      setCogneeStep(3); // SUBGRAPH BUILD active
+
+      // Add requested console logs
+      const responseWithGraph = { cogneeSubGraph: data.cogneeSubGraph || { nodes: [], edges: [] } };
+      {
+        const response = responseWithGraph;
+        console.log("Graph response:", response.cogneeSubGraph);
+        console.log("Nodes:", response.cogneeSubGraph.nodes);
+        console.log("Edges:", response.cogneeSubGraph.edges);
+      }
+
+      // Small delay to make the SUBGRAPH BUILD phase visually prominent and satisfying
+      await sleep(1000);
 
       if (data.cogneeSubGraph && data.cogneeSubGraph.nodes && data.cogneeSubGraph.nodes.length > 0) {
         setActiveGraph(data.cogneeSubGraph);
       } else {
         setActiveGraph(null);
       }
+
+      // Transition to complete step 4 (all indicators completed, graph fully visible)
+      setCogneeStep(4);
 
       await sleep(1200);
 
@@ -315,9 +330,21 @@ Synthesize past lessons, recommend a budget scale based on past metrics, suggest
         throw new Error("Blueprint data empty.");
       }
 
+      // Add requested console logs
+      const responseWithGraph = { cogneeSubGraph: data.cogneeSubGraph || { nodes: [], edges: [] } };
+      {
+        const response = responseWithGraph;
+        console.log("Graph response:", response.cogneeSubGraph);
+        console.log("Nodes:", response.cogneeSubGraph.nodes);
+        console.log("Edges:", response.cogneeSubGraph.edges);
+      }
+
       if (data.cogneeSubGraph && data.cogneeSubGraph.nodes && data.cogneeSubGraph.nodes.length > 0) {
         setActiveGraph(data.cogneeSubGraph);
       }
+
+      // All indicators completed, graph visible
+      setCogneeStep(4);
 
       setMessages(prev => [...prev, {
         id: `a-wow-${Date.now()}`,
@@ -341,6 +368,9 @@ Synthesize past lessons, recommend a budget scale based on past metrics, suggest
           { id: 'edge-3', sourceId: 'e-1', targetId: 'l-1', relationType: 'LEARNED_LESSON' }
         ]
       });
+
+      // Show completed state on fallback
+      setCogneeStep(4);
 
       setMessages(prev => [...prev, {
         id: `a-wow-fb-${Date.now()}`,

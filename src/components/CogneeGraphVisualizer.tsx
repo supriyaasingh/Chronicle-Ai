@@ -34,6 +34,26 @@ interface CogneeGraphVisualizerProps {
 }
 
 export default function CogneeGraphVisualizer({ nodes, edges, step }: CogneeGraphVisualizerProps) {
+  // Helper to get visual classes for each stage of the retrieval state machine
+  const getStageClass = (stage: number, currentStep: number) => {
+    if (currentStep > stage) {
+      // Completed state: Green/Emerald with thin border
+      return 'border-emerald-500/35 bg-emerald-950/25 text-emerald-400 font-extrabold shadow-sm shadow-emerald-500/5';
+    }
+    if (currentStep === stage) {
+      // Active state: Pulsing or highlighted matching color
+      if (stage === 1) {
+        return 'border-purple-500 bg-purple-500/10 text-purple-300 animate-pulse font-extrabold shadow-sm shadow-purple-500/15';
+      }
+      if (stage === 2) {
+        return 'border-indigo-500 bg-indigo-500/10 text-indigo-300 animate-pulse font-extrabold shadow-sm shadow-indigo-500/15';
+      }
+      return 'border-cyan-500 bg-cyan-500/10 text-cyan-300 animate-pulse font-extrabold shadow-sm shadow-cyan-500/15';
+    }
+    // Inactive state: default slate/gray
+    return 'border-slate-900 bg-slate-950/40 text-slate-500 opacity-50';
+  };
+
   // Compute coordinates for radial layout: center node in middle, other nodes spaced radially
   const layout = useMemo(() => {
     if (nodes.length === 0) return { nodesWithCoords: [], edgesWithCoords: [] };
@@ -137,47 +157,50 @@ export default function CogneeGraphVisualizer({ nodes, edges, step }: CogneeGrap
         
         {/* Step Badge */}
         <div className="flex items-center gap-1.5">
-          <span className={`h-2 w-2 rounded-full ${step >= 3 ? 'bg-green-500 animate-pulse' : 'bg-purple-500 animate-spin'}`} />
+          <span className={`h-2 w-2 rounded-full ${step >= 4 ? 'bg-green-500 animate-pulse' : 'bg-purple-500 animate-spin'}`} />
           <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider">
             {step === 1 && 'Searching nodes...'}
             {step === 2 && 'Traversing relations...'}
-            {step === 3 && 'Memory Synchronized'}
+            {step === 3 && 'Assembling graph...'}
+            {step === 4 && 'Memory Synchronized'}
           </span>
         </div>
       </div>
 
       {/* Progress indicators */}
       <div className="grid grid-cols-3 gap-1.5 text-[9px] font-bold tracking-widest text-slate-500 uppercase z-10 relative">
-        <div className={`p-1.5 rounded-lg border text-center transition-all ${
-          step >= 1 ? 'border-purple-500/20 bg-purple-500/5 text-purple-400' : 'border-slate-900 bg-slate-950/40'
-        }`}>
+        <div className={`p-1.5 rounded-lg border text-center transition-all ${getStageClass(1, step)}`}>
           1. Index Seek
         </div>
-        <div className={`p-1.5 rounded-lg border text-center transition-all ${
-          step >= 2 ? 'border-indigo-500/20 bg-indigo-500/5 text-indigo-400' : 'border-slate-900 bg-slate-950/40'
-        }`}>
+        <div className={`p-1.5 rounded-lg border text-center transition-all ${getStageClass(2, step)}`}>
           2. Relation Link
         </div>
-        <div className={`p-1.5 rounded-lg border text-center transition-all ${
-          step >= 3 ? 'border-emerald-500/20 bg-emerald-500/5 text-emerald-400' : 'border-slate-900 bg-slate-950/40'
-        }`}>
+        <div className={`p-1.5 rounded-lg border text-center transition-all ${getStageClass(3, step)}`}>
           3. Subgraph Build
         </div>
       </div>
 
       {/* Main SVG Render Area */}
       <div className="h-[240px] w-full bg-slate-950 border border-slate-900/60 rounded-xl relative overflow-hidden flex items-center justify-center">
-        {step < 3 ? (
+        {step < 4 ? (
           <div className="flex flex-col items-center justify-center space-y-2 z-20">
             <div className="relative flex h-10 w-10">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-10 w-10 bg-purple-600/20 border border-purple-500 flex items-center justify-center text-white font-mono text-xs font-bold">
-                C
+              <span className="relative inline-flex rounded-full h-10 w-10 bg-purple-600/20 border border-purple-500 flex items-center justify-center text-white font-mono text-xs font-bold animate-pulse">
+                {step === 3 ? 'G' : 'C'}
               </span>
             </div>
-            <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest">
-              {step === 1 ? 'Searching memory nodes...' : 'Retrieving adjacent nodes & edges...'}
+            <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest text-center px-4">
+              {step === 1 && 'Searching memory nodes...'}
+              {step === 2 && 'Retrieving adjacent nodes & edges...'}
+              {step === 3 && 'Assembling and rendering subgraph...'}
             </span>
+          </div>
+        ) : nodes.length === 0 ? (
+          <div className="flex flex-col items-center justify-center space-y-2 z-20 text-center p-4">
+            <Database className="w-6 h-6 text-slate-600 animate-pulse" />
+            <span className="text-[11px] font-medium text-slate-400">No connected memories in current chat focus</span>
+            <span className="text-[9px] font-mono text-slate-600 uppercase">Try asking about "sponsors" or "TechFest 2025"</span>
           </div>
         ) : (
           <svg className="w-full h-full z-10 absolute inset-0 select-none">
@@ -290,7 +313,7 @@ export default function CogneeGraphVisualizer({ nodes, edges, step }: CogneeGrap
       </div>
 
       {/* Stats Summary */}
-      {step === 3 && nodes.length > 0 && (
+      {step === 4 && nodes.length > 0 && (
         <div className="text-[10px] font-mono text-slate-400 flex items-center justify-between pt-1">
           <span>Connected Entities: <strong className="text-white">{nodes.length}</strong></span>
           <span>Relationships: <strong className="text-white">{edges.length}</strong></span>
