@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { ChatMessage, EventMemory, SponsorMemory, ChroniState } from '../types';
 import ChroniMascot from './ChroniMascot';
+import CogneeGraphVisualizer from './CogneeGraphVisualizer';
 
 interface ChatViewProps {
   events: EventMemory[];
@@ -89,6 +90,10 @@ export default function ChatView({ events, sponsors }: ChatViewProps) {
   const [chroniBubble, setChroniBubble] = useState<string | undefined>(undefined);
   const [isTyping, setIsTyping] = useState(false);
 
+  // Cognee memory layer visualization states
+  const [activeGraph, setActiveGraph] = useState<{ nodes: any[]; edges: any[] } | null>(null);
+  const [cogneeStep, setCogneeStep] = useState<number>(0); // 0: idle, 1: searching, 2: connecting, 3: found
+
   // Special Wow experience states
   const [wowSequenceActive, setWowSequenceActive] = useState(false);
   const [wowStep, setWowStep] = useState(0);
@@ -149,11 +154,22 @@ export default function ChatView({ events, sponsors }: ChatViewProps) {
     await executeQueryFlow(promptToSend, [...messages, userMsg]);
   };
 
-  // Normal Chat flow with server proxy
+  // Normal Chat flow with server proxy and Cognee memory visualization
   const executeQueryFlow = async (query: string, currentHistory: ChatMessage[]) => {
     setIsTyping(true);
+    setActiveGraph(null);
+    
+    // State 1: Searching memories...
     setChroniState('searching');
-    setChroniBubble("Scanning past logs in memory...");
+    setChroniBubble("Searching Cognee memory graph...");
+    setCogneeStep(1);
+
+    await sleep(800);
+
+    // State 2: Connecting organizational knowledge...
+    setChroniState('thinking');
+    setChroniBubble("Connecting organizational knowledge graph relations...");
+    setCogneeStep(2);
 
     try {
       // Map frontend messages to match the expected schema
@@ -181,13 +197,21 @@ export default function ChatView({ events, sponsors }: ChatViewProps) {
 
       const data = await response.json();
       
+      // State 3: Memory Found!
       setChroniState('found');
-      setChroniBubble("Ah, found it!");
-      
-      setTimeout(() => {
-        setChroniState('idle');
-        setChroniBubble(undefined);
-      }, 2000);
+      setChroniBubble("Ah, Cognee memory located! Restoring graph context...");
+      setCogneeStep(3);
+
+      if (data.cogneeSubGraph && data.cogneeSubGraph.nodes && data.cogneeSubGraph.nodes.length > 0) {
+        setActiveGraph(data.cogneeSubGraph);
+      } else {
+        setActiveGraph(null);
+      }
+
+      await sleep(1200);
+
+      setChroniState('idle');
+      setChroniBubble(undefined);
 
       // Add assistant reply
       setMessages(prev => [...prev, {
@@ -201,6 +225,7 @@ export default function ChatView({ events, sponsors }: ChatViewProps) {
       console.error(err);
       setChroniState('confused');
       setChroniBubble("I ran into an issue reading the archive...");
+      setCogneeStep(0);
       
       setMessages(prev => [...prev, {
         id: `a-err-${Date.now()}`,
@@ -222,43 +247,49 @@ export default function ChatView({ events, sponsors }: ChatViewProps) {
   // ⭐️ SPECIAL JUDGE WOW EXPERIENCE SEQUENCE ⭐️
   const triggerWowSequence = async () => {
     setWowSequenceActive(true);
+    setActiveGraph(null);
     setChroniState('sleep');
     setChroniBubble("Yawn... Chroni waking up...");
     setWowStep(0);
     setWowProgress(5);
+    setCogneeStep(1);
 
     // Step 1: Wake up
-    await sleep(1000);
+    await sleep(800);
     setChroniState('searching');
-    setChroniBubble("System waking up! Sparking archive directories...");
+    setChroniBubble("Scanning Cognee directory nodes...");
     setWowStep(1);
     setWowProgress(25);
+    setCogneeStep(1);
 
     // Step 2: Retrieve sponsors
-    await sleep(1000);
+    await sleep(800);
     setChroniState('thinking');
-    setChroniBubble("Accessing past sponsorship books...");
+    setChroniBubble("Traversing relationships SPONSORED_BY...");
     setWowStep(2);
     setWowProgress(50);
+    setCogneeStep(2);
 
     // Step 3: Retrieve budgets & lessons
-    await sleep(1000);
+    await sleep(800);
     setChroniState('searching');
-    setChroniBubble("Synthesizing past budgets & volunteer reviews...");
+    setChroniBubble("Analyzing ALLOCATED_BUDGET & LEARNED_LESSON connections...");
     setWowStep(3);
     setWowProgress(75);
+    setCogneeStep(2);
 
     // Step 4: Finalize
-    await sleep(1000);
+    await sleep(800);
     setChroniState('found');
-    setChroniBubble("Compiling past events list...");
+    setChroniBubble("Compiling final memory context...");
     setWowStep(4);
     setWowProgress(100);
+    setCogneeStep(3);
 
     // Celebration
     await sleep(800);
     setChroniState('success');
-    setChroniBubble("✨ Memory found! Launching blueprint!");
+    setChroniBubble("✨ Cognee memories loaded! Launching proposal...");
 
     // Execute full backend request to generate ultimate plan
     try {
@@ -284,6 +315,10 @@ Synthesize past lessons, recommend a budget scale based on past metrics, suggest
         throw new Error("Blueprint data empty.");
       }
 
+      if (data.cogneeSubGraph && data.cogneeSubGraph.nodes && data.cogneeSubGraph.nodes.length > 0) {
+        setActiveGraph(data.cogneeSubGraph);
+      }
+
       setMessages(prev => [...prev, {
         id: `a-wow-${Date.now()}`,
         role: 'assistant',
@@ -292,7 +327,21 @@ Synthesize past lessons, recommend a budget scale based on past metrics, suggest
       }]);
 
     } catch (err) {
-      // Fallback response in case of API error
+      // Fallback response in case of API error with complete static seeded subgraph
+      setActiveGraph({
+        nodes: [
+          { id: 'e-1', type: 'Event', name: 'TechFest 2025', properties: { budget: 50000, outcome: 'Attracted 500+ attendees' } },
+          { id: 's-1', type: 'Sponsor', name: 'Google Developer Groups', properties: { amount: 25000 } },
+          { id: 'b-1', type: 'Budget', name: '₹50,000 Budget Scale', properties: { amount: 50000 } },
+          { id: 'l-1', type: 'Lesson', name: 'Outreach Timing & Staggered Food', properties: { detail: 'Start outreach 3 months earlier' } }
+        ],
+        edges: [
+          { id: 'edge-1', sourceId: 'e-1', targetId: 's-1', relationType: 'SPONSORED_BY' },
+          { id: 'edge-2', sourceId: 'e-1', targetId: 'b-1', relationType: 'ALLOCATED_BUDGET' },
+          { id: 'edge-3', sourceId: 'e-1', targetId: 'l-1', relationType: 'LEARNED_LESSON' }
+        ]
+      });
+
       setMessages(prev => [...prev, {
         id: `a-wow-fb-${Date.now()}`,
         role: 'assistant',
@@ -524,6 +573,21 @@ Here is my recommended plan based on past successes:
             </motion.div>
           )}
 
+          {/* Cognee Memory Graph Visualizer */}
+          {cogneeStep > 0 && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="w-full max-w-lg mx-auto py-2"
+            >
+              <CogneeGraphVisualizer 
+                nodes={activeGraph?.nodes || []} 
+                edges={activeGraph?.edges || []} 
+                step={cogneeStep} 
+              />
+            </motion.div>
+          )}
+
           {/* Assistant typing indicator */}
           {isTyping && !wowSequenceActive && (
             <div className="flex gap-3 justify-start items-center">
@@ -535,7 +599,12 @@ Here is my recommended plan based on past successes:
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-500"></span>
                 </span>
-                <span>Chroni is searching the archive book...</span>
+                <span>
+                  {cogneeStep === 1 && 'Chroni: Locating graph indices...'}
+                  {cogneeStep === 2 && 'Chroni: Connecting adjacent memories...'}
+                  {cogneeStep === 3 && 'Chroni: Unlocking archival context...'}
+                  {cogneeStep === 0 && 'Chroni is searching the archive book...'}
+                </span>
               </div>
             </div>
           )}

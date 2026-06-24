@@ -3,11 +3,15 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
+import { CogneeProvider } from "./src/cognee";
 
 dotenv.config();
 
 const app = express();
 app.use(express.json());
+
+// Initialize server-side Cognee Memory Layer
+const cognee = new CogneeProvider();
 
 const PORT = 3000;
 
@@ -172,8 +176,65 @@ function generateHeuristicResponse(message: string, memories: any): string {
   return response;
 }
 
-// API endpoint for natural language memory retrieval
+// API endpoints for MemoryService and Cognee Graph Display
+app.get("/api/memory/graph", (req: express.Request, res: express.Response): void => {
+  try {
+    const graph = cognee.getFullGraph();
+    res.json(graph);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to retrieve Cognee graph." });
+  }
+});
+
+app.post("/api/memory/sync", (req: express.Request, res: express.Response): void => {
+  try {
+    const { events, sponsors } = req.body;
+    
+    if (events && Array.isArray(events)) {
+      events.forEach((e: any) => {
+        // Query Cognee to check if this event node already exists
+        const matches = cognee.searchMemory(e.name);
+        const exists = matches.some(n => n.type === "Event" && n.name.toLowerCase() === e.name.toLowerCase());
+        
+        if (!exists) {
+          console.log(`[MemoryService] Syncing new Event memory to Cognee: ${e.name}`);
+          cognee.saveMemory("Event", e.name, {
+            year: Number(e.year),
+            budget: Number(e.budget),
+            outcome: e.outcome,
+            lessons: e.lessons
+          });
+        }
+      });
+    }
+
+    if (sponsors && Array.isArray(sponsors)) {
+      sponsors.forEach((s: any) => {
+        const matches = cognee.searchMemory(s.name);
+        const exists = matches.some(n => n.type === "Sponsor" && n.name.toLowerCase() === s.name.toLowerCase());
+        
+        if (!exists) {
+          console.log(`[MemoryService] Syncing new Sponsor memory to Cognee: ${s.name}`);
+          cognee.saveMemory("Sponsor", s.name, {
+            amount: Number(s.amount),
+            notes: s.notes
+          });
+        }
+      });
+    }
+
+    res.json({ success: true, graph: cognee.getFullGraph() });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to sync memories to Cognee." });
+  }
+});
+
+// API endpoint for natural language memory retrieval through Cognee and LLM
 app.post("/api/chat", async (req: express.Request, res: express.Response): Promise<void> => {
+  let matchedNodes: any[] = [];
+  let relatedNodes: any[] = [];
+  let relatedEdges: any[] = [];
+
   try {
     const { message, memories, history } = req.body;
 
@@ -182,9 +243,55 @@ app.post("/api/chat", async (req: express.Request, res: express.Response): Promi
       return;
     }
 
+    // 1. QUERY COGNEE: Locate starting nodes matching keywords
+    matchedNodes = cognee.searchMemory(message);
+    
+    // 2. RETRIEVE RELATED MEMORIES: Traverse the graph to build highly connected context
+    const visitedNodeIds = new Set<string>();
+    const visitedEdgeIds = new Set<string>();
+
+    matchedNodes.slice(0, 3).forEach(node => {
+      const subgraph = cognee.retrieveRelatedMemories(node.id, 2);
+      subgraph.nodes.forEach(n => {
+        if (!visitedNodeIds.has(n.id)) {
+          visitedNodeIds.add(n.id);
+          relatedNodes.push(n);
+        }
+      });
+      subgraph.edges.forEach(e => {
+        if (!visitedEdgeIds.has(e.id)) {
+          visitedEdgeIds.add(e.id);
+          relatedEdges.push(e);
+        }
+      });
+    });
+
+    // 3. BUILD MEMORY CONTEXT: Compile graph relationships and details for the LLM
+    let cogneeContextStr = "";
+    if (relatedNodes.length > 0) {
+      cogneeContextStr += "\n\n=== COGNEE ORGANIZATIONAL GRAPH MEMORIES RETRIEVED ===\n";
+      
+      relatedNodes.forEach(node => {
+        cogneeContextStr += `- Node ID: ${node.id} (${node.type}: "${node.name}")\n`;
+        Object.entries(node.properties).forEach(([key, value]) => {
+          cogneeContextStr += `  * ${key}: ${value}\n`;
+        });
+      });
+
+      cogneeContextStr += "\n=== CONNECTED RELATIONSHIPS (EDGES) ===\n";
+      relatedEdges.forEach(edge => {
+        const sourceNode = relatedNodes.find(n => n.id === edge.sourceId) || cognee.getFullGraph().nodes.find(n => n.id === edge.sourceId);
+        const targetNode = relatedNodes.find(n => n.id === edge.targetId) || cognee.getFullGraph().nodes.find(n => n.id === edge.targetId);
+        if (sourceNode && targetNode) {
+          cogneeContextStr += `* [${sourceNode.name}] --(${edge.relationType})--> [${targetNode.name}]\n`;
+        }
+      });
+      cogneeContextStr += "========================================================\n\n";
+    }
+
     const ai = getGenAI();
 
-    // Format the past events and sponsors context neatly for the AI
+    // Setup events and sponsors strings as backups or general lists
     const eventsStr = memories?.events && memories.events.length > 0
       ? memories.events.map((e: any) => 
           `- Event: ${e.name} (${e.year})\n  Budget: ₹${Number(e.budget).toLocaleString()}\n  Outcome: ${e.outcome}\n  Lessons Learned: ${e.lessons}`
@@ -197,12 +304,15 @@ app.post("/api/chat", async (req: express.Request, res: express.Response): Promi
         ).join("\n")
       : "No sponsors recorded yet.";
 
-    const systemInstruction = `You are Chroni, the premium, adorable mascot and spirit of organizational memory for student clubs. 
+    const systemInstruction = `You are Chroni, the premium, adorable mascot and spirit of organizational memory for student clubs.
 Your purpose is to help clubs preserve knowledge (events, sponsors, budgets, decisions, and lessons learned) so leadership transitions are seamless.
 
-Here is the current state of the club's memory database that you guard:
+You reside atop the Cognee Memory Layer, which maps organizational relationships in a knowledge graph.
 
---- RECORDEED PAST EVENTS ---
+${cogneeContextStr ? `Here is the related memory graph retrieved directly from Cognee based on the user's message:\n${cogneeContextStr}` : ''}
+
+Here is the general state of the club's archive database you guard:
+--- RECORDED PAST EVENTS ---
 ${eventsStr}
 
 --- RECORDED SPONSORS ---
@@ -212,9 +322,8 @@ ${sponsorsStr}
 Your personality guidelines:
 - You are friendly, highly intelligent, supportive, and extremely organized.
 - You are professional and premium, NOT childish, silly, or distracting.
-- You speak as the club's dedicated memory spirit. You refer to the database as "our sacred archives" or "our collective club memory".
-- When answering questions, prioritize using the exact historical events and sponsors in the records above.
-- If the user asks about something not in the archive, acknowledge that it's not recorded, but provide constructive recommendations based on the existing records where possible.
+- You speak as the club's dedicated memory spirit. You refer to the database as "our sacred archives" or "our collective club memory" that is mapped inside Cognee.
+- When answering questions, prioritize using the exact historical events, budgets, sponsors, decisions, and lessons retrieved from the Cognee Memory Graph above. Mention the connections, e.g. "Google Developer Groups sponsored TechFest 2025 where we spent ₹50,000...".
 - Use elegant Markdown formatting (bolding, headers, bullet points, clean spacing) to structure your recommendations beautifully. Avoid raw unstructured blocks of text.
 - Be concise yet thorough. Give concrete numbers, lists, and actionable steps.`;
 
@@ -237,14 +346,26 @@ Your personality guidelines:
     });
 
     const reply = await generateWithModelRetry(ai, contents, systemInstruction);
-    res.json({ reply });
+    res.json({ 
+      reply,
+      cogneeSubGraph: {
+        nodes: relatedNodes,
+        edges: relatedEdges
+      }
+    });
 
   } catch (error: any) {
     console.log(`[Chronicle AI] Handled transition to offline archive recovery mode: ${error.message || error}`);
     try {
       const { message, memories } = req.body;
       const fallbackReply = generateHeuristicResponse(message, memories);
-      res.json({ reply: fallbackReply });
+      res.json({ 
+        reply: fallbackReply,
+        cogneeSubGraph: {
+          nodes: matchedNodes,
+          edges: []
+        }
+      });
     } catch (fallbackError: any) {
       console.log(`[Chronicle AI] Offline fallback generation failed: ${fallbackError}`);
       res.status(500).json({ 

@@ -31,14 +31,24 @@ export default function App() {
   const [sponsors, setSponsors] = useState<SponsorMemory[]>([]);
   const [clubName, setClubName] = useState('Sigma Developer Alliance');
 
-  // Load memories on mount
+  // Load memories on mount and sync to Cognee
   useEffect(() => {
     const data = getStoredMemories();
     setEvents(data.events);
     setSponsors(data.sponsors);
+    
+    // Initial Sync to Cognee backend MemoryService
+    fetch('/api/memory/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ events: data.events, sponsors: data.sponsors })
+    })
+    .then(r => r.json())
+    .then(res => console.log('[Cognee Sync] Synced on mount successfully.', res))
+    .catch(err => console.error('[Cognee Sync] Failed to sync on mount:', err));
   }, []);
 
-  // Sync added/deleted events to state and localStorage
+  // Sync added/deleted events to state, localStorage, and Cognee
   const handleAddEvent = (newEvent: Omit<EventMemory, 'id'>) => {
     const eventRecord: EventMemory = {
       ...newEvent,
@@ -47,15 +57,31 @@ export default function App() {
     const updated = [eventRecord, ...events];
     setEvents(updated);
     saveStoredMemories({ events: updated });
+
+    // Sync to Cognee backend MemoryService
+    fetch('/api/memory/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ events: updated, sponsors })
+    })
+    .catch(err => console.error('[Cognee Sync] Failed to sync added event:', err));
   };
 
   const handleDeleteEvent = (id: string) => {
     const updated = events.filter(e => e.id !== id);
     setEvents(updated);
     saveStoredMemories({ events: updated });
+
+    // Sync to Cognee backend MemoryService
+    fetch('/api/memory/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ events: updated, sponsors })
+    })
+    .catch(err => console.error('[Cognee Sync] Failed to sync deleted event:', err));
   };
 
-  // Sync added/deleted sponsors to state and localStorage
+  // Sync added/deleted sponsors to state, localStorage, and Cognee
   const handleAddSponsor = (newSponsor: Omit<SponsorMemory, 'id'>) => {
     const sponsorRecord: SponsorMemory = {
       ...newSponsor,
@@ -64,12 +90,28 @@ export default function App() {
     const updated = [sponsorRecord, ...sponsors];
     setSponsors(updated);
     saveStoredMemories({ sponsors: updated });
+
+    // Sync to Cognee backend MemoryService
+    fetch('/api/memory/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ events, sponsors: updated })
+    })
+    .catch(err => console.error('[Cognee Sync] Failed to sync added sponsor:', err));
   };
 
   const handleDeleteSponsor = (id: string) => {
     const updated = sponsors.filter(s => s.id !== id);
     setSponsors(updated);
     saveStoredMemories({ sponsors: updated });
+
+    // Sync to Cognee backend MemoryService
+    fetch('/api/memory/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ events, sponsors: updated })
+    })
+    .catch(err => console.error('[Cognee Sync] Failed to sync deleted sponsor:', err));
   };
 
   // Render view depending on tab
