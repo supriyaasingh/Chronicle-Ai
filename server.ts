@@ -177,53 +177,53 @@ function generateHeuristicResponse(message: string, memories: any): string {
 }
 
 // API endpoints for MemoryService and Cognee Graph Display
-app.get("/api/memory/graph", (req: express.Request, res: express.Response): void => {
+app.get("/api/memory/graph", async (req: express.Request, res: express.Response): Promise<void> => {
   try {
-    const graph = cognee.getFullGraph();
+    const graph = await cognee.getFullGraph();
     res.json(graph);
   } catch (error: any) {
     res.status(500).json({ error: error.message || "Failed to retrieve Cognee graph." });
   }
 });
 
-app.post("/api/memory/sync", (req: express.Request, res: express.Response): void => {
+app.post("/api/memory/sync", async (req: express.Request, res: express.Response): Promise<void> => {
   try {
     const { events, sponsors } = req.body;
     
     if (events && Array.isArray(events)) {
-      events.forEach((e: any) => {
+      for (const e of events) {
         // Query Cognee to check if this event node already exists
-        const matches = cognee.searchMemory(e.name);
+        const matches = await cognee.searchMemory(e.name);
         const exists = matches.some(n => n.type === "Event" && n.name.toLowerCase() === e.name.toLowerCase());
         
         if (!exists) {
           console.log(`[MemoryService] Syncing new Event memory to Cognee: ${e.name}`);
-          cognee.saveMemory("Event", e.name, {
+          await cognee.saveMemory("Event", e.name, {
             year: Number(e.year),
             budget: Number(e.budget),
             outcome: e.outcome,
             lessons: e.lessons
           });
         }
-      });
+      }
     }
 
     if (sponsors && Array.isArray(sponsors)) {
-      sponsors.forEach((s: any) => {
-        const matches = cognee.searchMemory(s.name);
+      for (const s of sponsors) {
+        const matches = await cognee.searchMemory(s.name);
         const exists = matches.some(n => n.type === "Sponsor" && n.name.toLowerCase() === s.name.toLowerCase());
         
         if (!exists) {
           console.log(`[MemoryService] Syncing new Sponsor memory to Cognee: ${s.name}`);
-          cognee.saveMemory("Sponsor", s.name, {
+          await cognee.saveMemory("Sponsor", s.name, {
             amount: Number(s.amount),
             notes: s.notes
           });
         }
-      });
+      }
     }
 
-    res.json({ success: true, graph: cognee.getFullGraph() });
+    res.json({ success: true, graph: await cognee.getFullGraph() });
   } catch (error: any) {
     res.status(500).json({ error: error.message || "Failed to sync memories to Cognee." });
   }
@@ -244,14 +244,14 @@ app.post("/api/chat", async (req: express.Request, res: express.Response): Promi
     }
 
     // 1. QUERY COGNEE: Locate starting nodes matching keywords
-    matchedNodes = cognee.searchMemory(message);
+    matchedNodes = await cognee.searchMemory(message);
     
     // 2. RETRIEVE RELATED MEMORIES: Traverse the graph to build highly connected context
     const visitedNodeIds = new Set<string>();
     const visitedEdgeIds = new Set<string>();
 
-    matchedNodes.slice(0, 3).forEach(node => {
-      const subgraph = cognee.retrieveRelatedMemories(node.id, 2);
+    for (const node of matchedNodes.slice(0, 3)) {
+      const subgraph = await cognee.retrieveRelatedMemories(node.id, 2);
       subgraph.nodes.forEach(n => {
         if (!visitedNodeIds.has(n.id)) {
           visitedNodeIds.add(n.id);
@@ -264,7 +264,7 @@ app.post("/api/chat", async (req: express.Request, res: express.Response): Promi
           relatedEdges.push(e);
         }
       });
-    });
+    }
 
     // 3. BUILD MEMORY CONTEXT: Compile graph relationships and details for the LLM
     let cogneeContextStr = "";
@@ -279,9 +279,10 @@ app.post("/api/chat", async (req: express.Request, res: express.Response): Promi
       });
 
       cogneeContextStr += "\n=== CONNECTED RELATIONSHIPS (EDGES) ===\n";
+      const fullGraph = await cognee.getFullGraph();
       relatedEdges.forEach(edge => {
-        const sourceNode = relatedNodes.find(n => n.id === edge.sourceId) || cognee.getFullGraph().nodes.find(n => n.id === edge.sourceId);
-        const targetNode = relatedNodes.find(n => n.id === edge.targetId) || cognee.getFullGraph().nodes.find(n => n.id === edge.targetId);
+        const sourceNode = relatedNodes.find(n => n.id === edge.sourceId) || fullGraph.nodes.find(n => n.id === edge.sourceId);
+        const targetNode = relatedNodes.find(n => n.id === edge.targetId) || fullGraph.nodes.find(n => n.id === edge.targetId);
         if (sourceNode && targetNode) {
           cogneeContextStr += `* [${sourceNode.name}] --(${edge.relationType})--> [${targetNode.name}]\n`;
         }
@@ -378,7 +379,7 @@ Your personality guidelines:
 // API endpoint to generate Leadership Handover Report from Cognee and LLM
 app.post("/api/handover", async (req: express.Request, res: express.Response): Promise<void> => {
   try {
-    const graph = cognee.getFullGraph();
+    const graph = await cognee.getFullGraph();
     const nodes = graph.nodes;
 
     // Collate items for report
