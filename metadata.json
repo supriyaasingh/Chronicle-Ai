@@ -1,0 +1,6 @@
+{
+  "name": "Chronicle AI",
+  "description": "The Memory Operating System for Clubs. Chronicle AI preserves club events, sponsors, budgets, decisions, and lessons learned, allowing new leaders to query past organizational memory instantly via Chroni, the premium AI mascot.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
