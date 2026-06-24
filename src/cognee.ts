@@ -12,7 +12,7 @@ import {
 
 export interface CogneeNode {
   id: string;
-  type: 'Event' | 'Sponsor' | 'Budget' | 'Lesson' | 'Decision' | 'Volunteer';
+  type: 'Event' | 'Sponsor' | 'Budget' | 'Lesson' | 'Decision' | 'Volunteer' | 'Member' | 'Applicant' | 'Certificate' | 'Alumni' | 'Announcement' | string;
   name: string;
   properties: Record<string, any>;
 }
@@ -154,8 +154,177 @@ export class CogneeProvider {
     this.localGraph.nodes.push({ id: l4Id, type: 'Lesson', name: 'Pre-installation of Runtime Packages', properties: { detail: 'Request students to pre-install runtime dependencies via email to avoid local Wi-Fi bottlenecking.' } });
     this.localGraph.edges.push({ id: 'edge-e4-l4', sourceId: 'e-4', targetId: l4Id, relationType: 'LEARNED_LESSON' });
 
+    // Seed Alumni and Graph linkages
+    console.log('[Cognee] Seeding Alumni network into knowledge graph...');
+    const alumniList = [
+      { id: 'alum-1', name: 'Aarav Sharma', company: 'Google', role: 'Software Engineer', skills: 'React, TypeScript, System Design, Cloud', gradYear: 2023, availableForMentorship: true },
+      { id: 'alum-2', name: 'Priya Mehta', company: 'Microsoft', role: 'Data Analyst', skills: 'Power BI, SQL, Excel, Data Visualization', gradYear: 2022, availableForMentorship: true },
+      { id: 'alum-3', name: 'Rahul Verma', company: 'Amazon', role: 'SDE I', skills: 'Java, Spring Boot, AWS, Microservices', gradYear: 2024, availableForMentorship: false },
+      { id: 'alum-4', name: 'Neha Patel', company: 'Deloitte', role: 'Cyber Security Analyst', skills: 'SOC Operations, SIEM, Threat Hunting, Incident Response', gradYear: 2023, availableForMentorship: true },
+      { id: 'alum-5', name: 'Karan Singh', company: 'TCS', role: 'AI Engineer', skills: 'Python, Machine Learning, LLMs, Prompt Engineering', gradYear: 2024, availableForMentorship: true },
+      { id: 'alum-6', name: 'Ananya Joshi', company: 'Infosys', role: 'Cloud Engineer', skills: 'Azure, DevOps, Docker, Kubernetes', gradYear: 2022, availableForMentorship: true }
+    ];
+
+    alumniList.forEach(a => {
+      // Add Alumnus node
+      this.localGraph.nodes.push({
+        id: a.id,
+        type: 'Alumni',
+        name: a.name,
+        properties: {
+          company: a.company,
+          role: a.role,
+          skills: a.skills,
+          gradYear: a.gradYear,
+          availableForMentorship: a.availableForMentorship ? 'Yes' : 'No',
+          linkedin: `https://linkedin.com/in/${a.name.toLowerCase().replace(' ', '-')}-demo`
+        }
+      });
+
+      // Add Company node if it doesn't exist
+      const companyNodeId = `comp-${a.company.toLowerCase()}`;
+      if (!this.localGraph.nodes.some(n => n.id === companyNodeId)) {
+        this.localGraph.nodes.push({
+          id: companyNodeId,
+          type: 'Company',
+          name: a.company,
+          properties: { domain: 'Industry Partner' }
+        });
+      }
+
+      // Link Alumnus -> Company
+      this.localGraph.edges.push({
+        id: `edge-${a.id}-${companyNodeId}`,
+        sourceId: a.id,
+        targetId: companyNodeId,
+        relationType: 'EMPLOYED_AT'
+      });
+
+      // Link Mentorship capability
+      if (a.availableForMentorship) {
+        const mentorId = `mentor-slot-${a.id}`;
+        this.localGraph.nodes.push({
+          id: mentorId,
+          type: 'Mentorship',
+          name: `${a.name} Mentorship Session`,
+          properties: { status: 'Available', domain: a.role }
+        });
+        this.localGraph.edges.push({
+          id: `edge-${a.id}-${mentorId}`,
+          sourceId: a.id,
+          targetId: mentorId,
+          relationType: 'OFFERS_MENTORSHIP'
+        });
+      }
+
+      // Link Skills
+      const skillsArr = a.skills.split(',').map(s => s.trim());
+      skillsArr.forEach(skill => {
+        const skillNodeId = `skill-${skill.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+        if (!this.localGraph.nodes.some(n => n.id === skillNodeId)) {
+          this.localGraph.nodes.push({
+            id: skillNodeId,
+            type: 'Skill',
+            name: skill,
+            properties: { category: 'Technical' }
+          });
+        }
+        this.localGraph.edges.push({
+          id: `edge-${a.id}-${skillNodeId}`,
+          sourceId: a.id,
+          targetId: skillNodeId,
+          relationType: 'SKILLED_IN'
+        });
+      });
+    });
+
+    // Special Linkage: Aarav Sharma is a TechFest 2025 Speaker
+    this.localGraph.edges.push({
+      id: 'edge-alum1-e1',
+      sourceId: 'alum-1',
+      targetId: 'e-1',
+      relationType: 'SPEAKS_AT'
+    });
+
+    // Seed Initial Meetings
+    console.log('[Cognee] Seeding initial meetings into knowledge graph...');
+    const now = new Date();
+    now.setHours(now.getHours() + 1);
+    const todayStr = now.toISOString().split('T')[0];
+    const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+
+    const seededMeetings = [
+      {
+        id: 'meet-1',
+        name: 'Board Meeting',
+        type: 'Meeting',
+        properties: {
+          meetingId: 'meet-1',
+          description: 'Quarterly review of administrative structure, officer responsibilities, and financial health.',
+          date: tomorrowStr,
+          time: '10:00',
+          venue: 'Executive Boardroom',
+          visibility: 'Administration Only',
+          participants: 'President, Secretary',
+          organizer: 'President'
+        }
+      },
+      {
+        id: 'meet-2',
+        name: 'Sponsor Strategy Meeting',
+        type: 'Meeting',
+        properties: {
+          meetingId: 'meet-2',
+          description: 'Formulate outreach campaigns for local tech hubs and premium corporate partners.',
+          date: '2026-06-28',
+          time: '14:00',
+          venue: 'Google Meet',
+          visibility: 'Administration Only',
+          participants: 'President, Secretary',
+          organizer: 'Secretary'
+        }
+      },
+      {
+        id: 'meet-3',
+        name: 'Volunteer Briefing',
+        type: 'Meeting',
+        properties: {
+          meetingId: 'meet-3',
+          description: 'Preparation session for the upcoming community beach clean-up drive. Assigning team roles.',
+          date: tomorrowStr,
+          time: '17:00',
+          venue: 'Club Lounge',
+          visibility: 'Members Only',
+          participants: 'Members, President, Secretary',
+          organizer: 'President'
+        }
+      },
+      {
+        id: 'meet-4',
+        name: 'General Body Meeting',
+        type: 'Meeting',
+        properties: {
+          meetingId: 'meet-4',
+          description: 'All members gather to discuss upcoming annual installation ceremony planning.',
+          date: todayStr,
+          time: timeStr,
+          venue: 'Seminar Hall',
+          visibility: 'Everyone',
+          participants: 'Everyone',
+          organizer: 'Secretary'
+        }
+      }
+    ];
+
+    seededMeetings.forEach(m => {
+      this.localGraph.nodes.push(m);
+    });
+
     this.saveLocalGraph();
-    console.log('[Cognee] Seeding completed.');
+    console.log('[Cognee] Seeding completed with Alumni directory graph and meetings.');
   }
 
   private async getOrCreateDatasetId(): Promise<string> {
