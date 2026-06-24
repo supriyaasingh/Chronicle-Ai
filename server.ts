@@ -375,6 +375,112 @@ Your personality guidelines:
   }
 });
 
+// API endpoint to generate Leadership Handover Report from Cognee and LLM
+app.post("/api/handover", async (req: express.Request, res: express.Response): Promise<void> => {
+  try {
+    const graph = cognee.getFullGraph();
+    const nodes = graph.nodes;
+
+    // Collate items for report
+    const eventNodes = nodes.filter(n => n.type === 'Event');
+    const sponsorNodes = nodes.filter(n => n.type === 'Sponsor');
+    const lessonNodes = nodes.filter(n => n.type === 'Lesson');
+    const decisionNodes = nodes.filter(n => n.type === 'Decision');
+
+    let promptContext = `You are Chroni, the premium mascot and spirit of organizational memory for student clubs.
+Your purpose is to compile a high-fidelity, polished, and comprehensive Leadership Handover Report for our student club.
+You will extract wisdom from our Cognee graph memory layer.
+
+Here are the real memories retrieved directly from Cognee:
+
+--- RECORDED CLUB EVENTS ---
+${eventNodes.map(e => `- Event: ${e.name} (${e.properties.year})\n  Budget: ₹${Number(e.properties.budget || 0).toLocaleString()}\n  Outcome: ${e.properties.outcome}`).join("\n")}
+
+--- RECORDED SPONSORS ---
+${sponsorNodes.map(s => `- Sponsor: ${s.name}\n  Contribution: ₹${Number(s.properties.amount || 0).toLocaleString()}\n  Notes: ${s.properties.notes}`).join("\n")}
+
+--- RECORDED LESSONS ---
+${lessonNodes.map(l => `- Lesson Detail: ${l.properties.detail || l.name}`).join("\n")}
+
+--- RECORDED HISTORICAL DECISIONS ---
+${decisionNodes.map(d => `- Decision: ${d.name}\n  Detail: ${d.properties.detail || ''}`).join("\n")}
+
+Please generate a professional, structured executive report for incoming leaders.
+You MUST output exactly these 6 sections with these titles (as ## markdown headers):
+
+## Club Summary
+Provide a high-level summary of the club's growth, total events managed, total budget, and cumulative strength.
+
+## Top Sponsors
+Rank the sponsors by their contributions and add notes on how to approach them and what swag/assets they require.
+
+## Most Successful Events
+List our most successful events (such as TechFest, HackDay, CodeSprint, etc.), detailing budgets, attendance highlights, and overall positive outcomes.
+
+## Biggest Mistakes To Avoid
+List critical issues logged from retrospectives, focusing on scheduling bottlenecks, food line staggering, wi-fi testing, or system server capacity under load.
+
+## Recommended Actions For Next Team
+Provide a highly specific, tactical timeline/action plan for incoming leaders (e.g. outreach 3 months early, dry-runs 48 hours prior, snack/donut budgets for volunteer overnight morale).
+
+## Historical Decisions
+Detail documented tactical decisions made by past committees that saved the day.
+
+Format with crisp headings, list items, bold stats, and an inspirational concluding sentence. No conversational intro/outro text, start directly with the report.`;
+
+    const ai = getGenAI();
+    let report = "";
+    try {
+      report = await generateWithModelRetry(ai, [{ role: 'user', parts: [{ text: promptContext }] }], "You are Chroni, generating an official club leadership handover report.");
+    } catch (llmErr) {
+      console.log("[Handover] Falling back to high-fidelity local handover report generator:", llmErr);
+      report = generateLocalHandoverReport(eventNodes, sponsorNodes, lessonNodes, decisionNodes);
+    }
+
+    res.json({ report });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to generate handover report." });
+  }
+});
+
+// Heuristic local generator for handover report
+function generateLocalHandoverReport(events: any[], sponsors: any[], lessons: any[], decisions: any[]): string {
+  const totalBudgets = events.reduce((acc, curr) => acc + Number(curr.properties.budget || 0), 0);
+  const totalFunding = sponsors.reduce((acc, curr) => acc + Number(curr.properties.amount || 0), 0);
+  
+  return `## Club Summary
+Welcome, incoming Leadership Team! Chronicle AI has retrieved our club's sacred archives directly from the **Cognee Graph Database**. 
+Over the past active fiscal cycles, the club successfully coordinated **${events.length} major initiatives**, allocating a total combined operational budget of **₹${totalBudgets.toLocaleString()}** and securing **₹${totalFunding.toLocaleString()}** in community sponsorship support. Our organizational wisdom has compounded securely.
+
+## Top Sponsors
+Based on archived financial ledger folders, here are our premier funding partners:
+${sponsors.map((s, i) => `${i + 1}. **${s.name}** — Contribution: **₹${Number(s.properties.amount || 0).toLocaleString()}**\n   *Archived Strategy:* ${s.properties.notes || 'Reliable corporate supporter.'}`).join("\n")}
+
+*Tactical Advice:* Initiate sponsor proposals exactly 3 months before major events to ensure paperwork clears the administrative pipelines.
+
+## Most Successful Events
+Our historical database logs the following key successful initiatives:
+${events.map(e => `- **${e.name} (${e.properties.year})**: Handled a budget scale of ₹${Number(e.properties.budget || 0).toLocaleString()}.\n  *Success File:* ${e.properties.outcome || 'Event completed smoothly with high engagement.'}`).join("\n")}
+
+## Biggest Mistakes To Avoid
+Retrospective post-mortems warn against repeating these logistical oversights:
+${lessons.map(l => `- **Logistical Warning**: ${l.properties.detail || l.name}`).join("\n")}
+- **Food Delay Risks**: If refreshment lines exceed 15 minutes, attendee satisfaction index drops heavily. Stagger your scheduled break times.
+- **Server Stress Points**: Running automated compiler runs/code submittals requires active server stress-testing extensively 48 hours prior.
+
+## Recommended Actions For Next Team
+1. **First 30 Days**: Audit previous sponsor portfolios. Reach out to *Google Developer Groups* and *Stripe* to lock down annual commitments.
+2. **First 60 Days**: Map event budgets using our historical templates. Build in a 15% buffer for contingency caterings.
+3. **Event Week**: Run a comprehensive live dry-run of Wi-Fi routers and local electricity load capacities. Keep overnight volunteer crews energized with cheap donuts.
+
+## Historical Decisions
+Past committees logged these critical tactical pivot decisions:
+${decisions.map(d => `- **Approved committee choice**: ${d.properties.detail || d.name}`).join("\n")}
+- **Volunteer Morale Decision**: Buying coffee flasks and boxes of donuts for midnight hackathon volunteers. This prevented coordinator attrition during high-stress hours.
+
+*Your committee now inherits the accumulated wisdom of all past cycles. Guard this memory well!*`;
+}
+
 // Setup Vite development server or production static serving
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {

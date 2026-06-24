@@ -6,12 +6,14 @@ import {
   Briefcase, 
   MessageSquare, 
   ShieldAlert, 
+  ShieldCheck,
   HelpCircle,
   Database,
   Sparkles,
   ChevronRight,
   LogOut,
-  Settings
+  Settings,
+  Clock
 } from 'lucide-react';
 
 import { EventMemory, SponsorMemory } from './types';
@@ -22,9 +24,11 @@ import DashboardView from './components/DashboardView';
 import EventsView from './components/EventsView';
 import SponsorsView from './components/SponsorsView';
 import ChatView from './components/ChatView';
+import TimelineView from './components/TimelineView';
+import HandoverView from './components/HandoverView';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'events' | 'sponsors' | 'chat'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'events' | 'sponsors' | 'timeline' | 'handover' | 'chat'>('dashboard');
   
   // Memories States
   const [events, setEvents] = useState<EventMemory[]>([]);
@@ -123,6 +127,10 @@ export default function App() {
         return <EventsView events={events} onAddEvent={handleAddEvent} onDeleteEvent={handleDeleteEvent} />;
       case 'sponsors':
         return <SponsorsView sponsors={sponsors} onAddSponsor={handleAddSponsor} onDeleteSponsor={handleDeleteSponsor} />;
+      case 'timeline':
+        return <TimelineView events={events} sponsors={sponsors} />;
+      case 'handover':
+        return <HandoverView events={events} sponsors={sponsors} />;
       case 'chat':
         return <ChatView events={events} sponsors={sponsors} />;
       default:
@@ -135,6 +143,8 @@ export default function App() {
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, color: 'text-purple-400' },
     { id: 'events', label: 'Event Memories', icon: BookOpen, color: 'text-purple-400' },
     { id: 'sponsors', label: 'Sponsorship Files', icon: Briefcase, color: 'text-cyan-400' },
+    { id: 'timeline', label: 'Memory Timeline', icon: Clock, color: 'text-amber-400' },
+    { id: 'handover', label: 'Handover Mode', icon: ShieldCheck, color: 'text-emerald-400' },
     { id: 'chat', label: 'Ask Chroni (AI)', icon: MessageSquare, color: 'text-indigo-400' },
   ];
 
